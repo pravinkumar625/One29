@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Class of ’26 — Portfolio</title>
+<meta name="description" content="29 students. 29 portfolios. One page.">
+<meta name="theme-color" content="#FFD60A">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23FFD60A'/%3E%3Cpath d='M9 9l14 14M23 9L9 23' stroke='%230b0b0b' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Space+Grotesk:wght@400;500;700&family=Unbounded:wght@600;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<!-- gooey filter for the ink blob -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="goo" x="-10%" y="-10%" width="120%" height="120%">
+    <feGaussianBlur in="SourceGraphic" stdDeviation="7"/>
+    <feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -10"/>
+  </filter>
+</svg>
+<canvas id="ink" aria-hidden="true"></canvas>
+
+<nav id="nav">
+  <a class="mark mag" href="#/" aria-label="Home">✕</a>
+  <a class="oval" href="#/" aria-hidden="true" tabindex="-1"><i></i><i></i><i></i></a>
+  <div class="pills">
+    <a class="pill mag" href="#/crew" data-nav="crew"><span>Crew</span></a>
+    <a class="pill mag" href="#/me" id="navMe" data-nav="me"><span>Profile</span></a>
+    <a class="pill mag" href="#/login" id="navAuth"><span>Log in</span></a>
+  </div>
+</nav>
+
+<main id="view"></main>
+
+<div id="px" aria-hidden="true"></div>
+<div id="intro"><div><b id="introNum">0</b><span>%</span></div><p>Class of ’26</p></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>
