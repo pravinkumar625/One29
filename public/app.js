@@ -51,10 +51,12 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 /* ---------- state ---------- */
-let me = null, MAX = 29, students = [];
+let me = null, MAX = 29, students = [], googleClientId = null, allowPasswordLogin = true;
 async function loadBase() {
   const [m, s] = await Promise.all([api('/me'), api('/students')]);
   me = m.me; MAX = s.max; students = s.students;
+  googleClientId = m.googleClientId;
+  allowPasswordLogin = m.allowPasswordLogin;
 }
 
 /* ---------- theme ---------- */
@@ -333,6 +335,79 @@ function notFound() {
   return { el: h('section', { class: 'center' }, h('h1', {}, 'Nobody', h('br'), 'here yet'), h('div', {}, h('a', { class: 'btn', href: '#/crew' }, h('span', {}, 'See the crew'), h('span', {}, '→')))), theme: 0 };
 }
 
+function decodeJwt(token) {
+  try {
+    const base64Url = (token || '').split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return {};
+  }
+}
+
+function googleAuthView() {
+  const err = h('div', { class: 'err', role: 'alert' });
+  const gBox = h('div', { id: 'gBtn', style: 'margin: 24px 0;' });
+  const el = h('section', { class: 'formpage' },
+    split(h('h1'), 'Sign in', 60),
+    h('div', { class: 'rv in' },
+      h('p', { class: 'alt', style: 'margin-bottom: 24px;' }, 'Sign in with your student Google account to join the crew or edit your page.'),
+      gBox,
+      err
+    )
+  );
+
+  function setupGoogle() {
+    if (window.google?.accounts?.id && googleClientId) {
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async (resp) => {
+          err.textContent = '';
+          const credential = resp.credential;
+          try {
+            // Frontend validation: decode payload and check email using email-rule.js
+            const payload = decodeJwt(credential);
+            const rule = window.EmailRule;
+            const email = (rule?.normalize || ((s) => (typeof s === 'string' ? s.trim() : '')))(payload.email || '');
+            if (rule && !rule.isAuthorizedEmail(email)) {
+              err.textContent = rule.ACCESS_DENIED_MESSAGE;
+              el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+              return; // Do NOT call server
+            }
+            const r = await api('/google', { method: 'POST', body: { credential } });
+            me = r.me;
+            await loadBase();
+            updateNav();
+            toast(`Welcome, ${me.name.split(' ')[0]} ✦`);
+            location.hash = '#/u/' + me.username;
+          } catch (ex) {
+            err.textContent = ex.message;
+            el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+          }
+        },
+      });
+      gBox.replaceChildren();
+      window.google.accounts.id.renderButton(gBox, {
+        theme: 'filled_black',
+        size: 'large',
+        shape: 'pill',
+        text: 'signin_with',
+      });
+    } else {
+      setTimeout(setupGoogle, 120);
+    }
+  }
+
+  requestAnimationFrame(setupGoogle);
+  return { el, theme: 1 };
+}
+
 function authView(mode) {
   const signup = mode === 'signup';
   const err = h('div', { class: 'err', role: 'alert' });
@@ -553,8 +628,14 @@ async function route(first) {
   let out;
   try {
     if (hash === '#/' || hash === '#/crew') { await loadBase().catch(() => {}); out = homeView(); }
-    else if (hash === '#/login') out = authView('login');
-    else if (hash === '#/signup') { await loadBase().catch(() => {}); out = authView('signup'); }
+    else if (hash === '#/login' || hash === '#/signup') {
+      await loadBase().catch(() => {});
+      if (googleClientId) {
+        out = googleAuthView();
+      } else {
+        out = authView(hash === '#/signup' ? 'signup' : 'login');
+      }
+    }
     else if (hash === '#/edit') out = await editView();
     else if (hash.startsWith('#/u/')) out = await profileView(hash.slice(4));
     else out = notFound();
