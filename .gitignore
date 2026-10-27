@@ -1,5 +1,6 @@
 # Ignore student data and temporary files
 data/
 *.tmp
+.env
 .DS_Store
 Thumbs.db

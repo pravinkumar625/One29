@@ -4,6 +4,23 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+
+// Zero-dependency .env loader
+try {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const m = trimmed.match(/^([A-Za-z_0-9]+)\s*=\s*(.*)$/);
+      if (m && !process.env[m[1]]) {
+        process.env[m[1]] = m[2].trim().replace(/^['"]|['"]$/g, '');
+      }
+    }
+  }
+} catch {}
+
 const { isAuthorizedEmail, normalize: normalizeEmail, ACCESS_DENIED_MESSAGE } = require('./public/email-rule.js');
 
 const PORT = process.env.PORT || 3000;
@@ -237,6 +254,22 @@ async function verifyGoogle(credential) {
   if (!credential || typeof credential !== 'string') {
     throw fail(400, 'Missing Google credential');
   }
+
+  // Local development fallback when GOOGLE_CLIENT_ID is not configured
+  if (!GOOGLE_CLIENT_ID && credential.startsWith('dev:')) {
+    const rawEmail = credential.slice(4).trim();
+    const email = normalizeEmail(rawEmail);
+    if (!isAuthorizedEmail(email)) {
+      throw fail(403, ACCESS_DENIED_MESSAGE);
+    }
+    return {
+      sub: 'dev-' + crypto.createHash('sha256').update(email).digest('hex').slice(0, 16),
+      email,
+      name: nameFromEmail(email),
+      picture: '',
+    };
+  }
+
   const tokeninfoUrl = `${TOKENINFO_URL}?id_token=${encodeURIComponent(credential)}`;
   let resp;
   try {

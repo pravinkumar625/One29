@@ -351,34 +351,138 @@ function decodeJwt(token) {
   }
 }
 
+function makeGoogleIcon() {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('viewBox', '0 0 24 24');
+  s.setAttribute('width', '20');
+  s.setAttribute('height', '20');
+  s.setAttribute('aria-hidden', 'true');
+  const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p1.setAttribute('fill', '#4285F4');
+  p1.setAttribute('d', 'M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z');
+  const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p2.setAttribute('fill', '#34A853');
+  p2.setAttribute('d', 'M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z');
+  const p3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p3.setAttribute('fill', '#FBBC05');
+  p3.setAttribute('d', 'M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z');
+  const p4 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p4.setAttribute('fill', '#EA4335');
+  p4.setAttribute('d', 'M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z');
+  s.append(p1, p2, p3, p4);
+  return s;
+}
+
 function googleAuthView() {
   const err = h('div', { class: 'err', role: 'alert' });
-  const gBox = h('div', { id: 'gBtn', style: 'margin: 24px 0;' });
+  const gBox = h('div', { id: 'gBtn', style: 'margin: 20px 0; max-width: 280px; min-height: 44px;' });
+  const devBox = h('div', { class: 'dev-auth-form', style: 'display:none;' });
+
+  const emailInput = h('input', {
+    type: 'email',
+    placeholder: 'your.name.s.129@kalvium.community',
+    style: 'margin-bottom: 12px;',
+  });
+  const devSubmitBtn = h('button', { class: 'btn', type: 'submit' }, h('span', {}, 'Continue with Email'), h('span', {}, '→'));
+
+  const submitEmail = async (rawEmail) => {
+    err.textContent = '';
+    const email = (window.EmailRule?.normalize || ((s) => (typeof s === 'string' ? s.trim() : '')))(rawEmail || '');
+    if (window.EmailRule && !window.EmailRule.isAuthorizedEmail(email)) {
+      err.textContent = window.EmailRule.ACCESS_DENIED_MESSAGE;
+      el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+      return;
+    }
+    try {
+      devSubmitBtn.disabled = true;
+      const r = await api('/google', { method: 'POST', body: { credential: 'dev:' + email } });
+      me = r.me;
+      await loadBase();
+      updateNav();
+      toast(`Welcome, ${me.name.split(' ')[0]} ✦`);
+      location.hash = '#/u/' + me.username;
+    } catch (ex) {
+      err.textContent = ex.message;
+      el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+      devSubmitBtn.disabled = false;
+    }
+  };
+
+  const devForm = h('form', { novalidate: true },
+    h('div', { class: 'field' },
+      h('span', {}, 'Enter your student Google email'),
+      emailInput,
+      h('small', {}, 'Only @kalvium.community student addresses are permitted.')
+    ),
+    h('div', { style: 'margin-top: 14px;' }, devSubmitBtn)
+  );
+  devForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitEmail(emailInput.value);
+  });
+
+  const quickChips = [
+    { name: 'Thrishank Kumar', email: 'thrishank.kumar.s.129@kalvium.community' },
+    { name: 'Lohith M', email: 'lohith.m.s.129@kalvium.community' },
+    { name: 'Pravin Kumar', email: 'pravin.kumar.s.129@kalvium.community' },
+  ].map((c) => h('button', {
+    type: 'button',
+    class: 'quick-chip',
+    onclick: () => {
+      emailInput.value = c.email;
+      submitEmail(c.email);
+    }
+  }, c.name));
+
+  devBox.append(
+    devForm,
+    h('div', { style: 'margin-top: 18px;' },
+      h('span', { style: 'font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7;' }, 'Or quick-sign as pre-made student:'),
+      h('div', { class: 'quick-chips' }, quickChips)
+    )
+  );
+
+  const fallbackBtn = h('button', {
+    class: 'btn google-sign-btn',
+    type: 'button',
+    onclick: () => {
+      if (googleClientId && window.google?.accounts?.id) {
+        window.google.accounts.id.prompt();
+      } else {
+        devBox.style.display = devBox.style.display === 'none' ? 'block' : 'none';
+        emailInput.focus();
+      }
+    }
+  }, makeGoogleIcon(), h('span', {}, 'Sign in with Google'));
+
   const el = h('section', { class: 'formpage' },
     split(h('h1'), 'Sign in', 60),
     h('div', { class: 'rv in' },
       h('p', { class: 'alt', style: 'margin-bottom: 24px;' }, 'Sign in with your student Google account to join the crew or edit your page.'),
+      h('div', { style: 'margin: 20px 0;' }, fallbackBtn),
       gBox,
-      err
+      devBox,
+      err,
+      allowPasswordLogin && h('p', { class: 'alt', style: 'margin-top: 36px;' }, 'Local testing? ', h('a', { href: '#/password-login' }, 'Sign in with User ID + password'))
     )
   );
 
   function setupGoogle() {
     if (window.google?.accounts?.id && googleClientId) {
+      fallbackBtn.style.display = 'none';
       window.google.accounts.id.initialize({
         client_id: googleClientId,
         callback: async (resp) => {
           err.textContent = '';
           const credential = resp.credential;
           try {
-            // Frontend validation: decode payload and check email using email-rule.js
             const payload = decodeJwt(credential);
             const rule = window.EmailRule;
             const email = (rule?.normalize || ((s) => (typeof s === 'string' ? s.trim() : '')))(payload.email || '');
             if (rule && !rule.isAuthorizedEmail(email)) {
               err.textContent = rule.ACCESS_DENIED_MESSAGE;
               el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
-              return; // Do NOT call server
+              return;
             }
             const r = await api('/google', { method: 'POST', body: { credential } });
             me = r.me;
@@ -398,9 +502,10 @@ function googleAuthView() {
         size: 'large',
         shape: 'pill',
         text: 'signin_with',
+        width: 280,
       });
     } else {
-      setTimeout(setupGoogle, 120);
+      setTimeout(setupGoogle, 150);
     }
   }
 
@@ -630,11 +735,11 @@ async function route(first) {
     if (hash === '#/' || hash === '#/crew') { await loadBase().catch(() => {}); out = homeView(); }
     else if (hash === '#/login' || hash === '#/signup') {
       await loadBase().catch(() => {});
-      if (googleClientId) {
-        out = googleAuthView();
-      } else {
-        out = authView(hash === '#/signup' ? 'signup' : 'login');
-      }
+      out = googleAuthView();
+    }
+    else if (hash === '#/password-login') {
+      await loadBase().catch(() => {});
+      out = authView('login');
     }
     else if (hash === '#/edit') out = await editView();
     else if (hash.startsWith('#/u/')) out = await profileView(hash.slice(4));
