@@ -1,0 +1,5 @@
+# Ignore student data and temporary files
+data/
+*.tmp
+.DS_Store
+Thumbs.db
