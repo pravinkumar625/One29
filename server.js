@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { isAuthorizedEmail, normalize: normalizeEmail, ACCESS_DENIED_MESSAGE } = require('./public/email-rule.js');
 
 const PORT = process.env.PORT || 3000;
 const MAX_STUDENTS = 29;
@@ -12,9 +13,78 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SESSION_DAYS = 30;
 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const TOKENINFO_URL = process.env.TOKENINFO_URL || 'https://oauth2.googleapis.com/tokeninfo';
+const allowPasswordAuth = process.env.ALLOW_PASSWORD_LOGIN === '1' && !GOOGLE_CLIENT_ID;
+
+const PRE_MADE_EMAILS = [
+  'thrishank.kumar.s.129@kalvium.community',
+  'lohith.m.s.129@kalvium.community',
+  'pravin.kumar.s.129@kalvium.community',
+];
+
+function nameFromEmail(email) {
+  const local = (email || '').split('.s.129@')[0] || (email || '').split('@')[0];
+  return local
+    .split('.')
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function usernameFromEmail(email) {
+  const local = (email || '').split('.s.129@')[0] || (email || '').split('@')[0];
+  let base = local.replace(/[^a-z0-9_]/gi, '_').toLowerCase().slice(0, 20);
+  if (base.length < 3) base = (base + '___').slice(0, 3);
+  return base;
+}
+
+function allocateUsername(email) {
+  const base = usernameFromEmail(email);
+  let candidate = base;
+  let counter = 2;
+  while (db.users[candidate] && db.users[candidate].email !== email) {
+    const suffix = String(counter++);
+    candidate = (base.slice(0, 20 - suffix.length) + suffix);
+  }
+  return candidate;
+}
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let db = { users: {}, sessions: {} };
 let lastMtime = 0;
+
+function seedPreMadeAccounts() {
+  let changed = false;
+  for (const email of PRE_MADE_EMAILS) {
+    const exists = Object.values(db.users).some((u) => u.email === email);
+    if (exists) continue;
+    if (Object.keys(db.users).length >= MAX_STUDENTS) break;
+    const username = allocateUsername(email);
+    const name = nameFromEmail(email);
+    db.users[username] = {
+      username,
+      name,
+      email,
+      googleId: null,
+      salt: '',
+      hash: '',
+      tagline: '',
+      role: '',
+      bio: '',
+      skills: [],
+      links: { github: '', linkedin: '', website: '', instagram: '', email: '' },
+      projects: [],
+      theme: 0,
+      avatar: '',
+      created: Date.now(),
+      updated: Date.now(),
+    };
+    changed = true;
+  }
+  if (changed) save();
+}
+
 function loadDb() {
   try {
     if (!fs.existsSync(DB_FILE)) return;
@@ -25,10 +95,12 @@ function loadDb() {
       fresh.sessions ??= {};
       db = fresh;
       lastMtime = stat.mtimeMs;
+      seedPreMadeAccounts();
     }
   } catch {}
 }
 loadDb();
+seedPreMadeAccounts();
 
 function save() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -160,6 +232,44 @@ function publicProfile(u, n) {
   };
 }
 
+/* ---------- Google Auth ---------- */
+async function verifyGoogle(credential) {
+  if (!credential || typeof credential !== 'string') {
+    throw fail(400, 'Missing Google credential');
+  }
+  const tokeninfoUrl = `${TOKENINFO_URL}?id_token=${encodeURIComponent(credential)}`;
+  let resp;
+  try {
+    resp = await fetch(tokeninfoUrl);
+  } catch (err) {
+    throw fail(502, 'Could not reach Google token verification service');
+  }
+  if (!resp.ok) {
+    throw fail(401, 'Invalid Google token');
+  }
+  const payload = await resp.json().catch(() => ({}));
+
+  if (GOOGLE_CLIENT_ID && payload.aud !== GOOGLE_CLIENT_ID) {
+    throw fail(401, 'Token audience does not match GOOGLE_CLIENT_ID');
+  }
+  if (payload.email_verified !== 'true' && payload.email_verified !== true) {
+    throw fail(401, 'Google email is not verified');
+  }
+
+  const rawEmail = payload.email || '';
+  const email = normalizeEmail(rawEmail);
+  if (!isAuthorizedEmail(email)) {
+    throw fail(403, ACCESS_DENIED_MESSAGE);
+  }
+
+  return {
+    sub: payload.sub,
+    email,
+    name: payload.name || nameFromEmail(email),
+    picture: payload.picture || '',
+  };
+}
+
 /* ---------- API ---------- */
 async function api(req, res, url) {
   loadDb();
@@ -170,7 +280,12 @@ async function api(req, res, url) {
   if (method !== 'GET' && !req.headers['x-req']) throw fail(403, 'Blocked');
 
   if (method === 'GET' && route === '/me') {
-    return send(res, 200, { me: me ? { username: me.username, name: me.name } : null, max: MAX_STUDENTS });
+    return send(res, 200, {
+      me: me ? { username: me.username, name: me.name } : null,
+      max: MAX_STUDENTS,
+      googleClientId: GOOGLE_CLIENT_ID || null,
+      allowPasswordLogin: allowPasswordAuth,
+    });
   }
 
   if (method === 'GET' && route === '/students') {
@@ -197,7 +312,59 @@ async function api(req, res, url) {
     return res.end(Buffer.from(mm[2], 'base64'));
   }
 
+  if (method === 'POST' && route === '/google') {
+    rateLimit(req);
+    const b = await readBody(req);
+    const credential = typeof b.credential === 'string' ? b.credential.trim() : '';
+    const gUser = await verifyGoogle(credential);
+
+    // Look for existing user by linked googleId
+    let user = Object.values(db.users).find((u) => u.googleId === gUser.sub);
+
+    // If not found, match by verified email (e.g. pre-made account)
+    if (!user) {
+      user = Object.values(db.users).find((u) => u.email === gUser.email && !u.googleId);
+      if (user) {
+        user.googleId = gUser.sub;
+        user.updated = Date.now();
+        save();
+      }
+    }
+
+    // If still not found, create a new student account
+    if (!user) {
+      if (Object.keys(db.users).length >= MAX_STUDENTS) {
+        throw fail(403, 'All ' + MAX_STUDENTS + ' spots are taken');
+      }
+      const username = allocateUsername(gUser.email);
+      user = {
+        username,
+        name: gUser.name || nameFromEmail(gUser.email),
+        email: gUser.email,
+        googleId: gUser.sub,
+        salt: '',
+        hash: '',
+        tagline: '',
+        role: '',
+        bio: '',
+        skills: [],
+        links: { github: '', linkedin: '', website: '', instagram: '', email: '' },
+        projects: [],
+        theme: 0,
+        avatar: '',
+        created: Date.now(),
+        updated: Date.now(),
+      };
+      db.users[username] = user;
+      save();
+    }
+
+    startSession(res, user.username);
+    return send(res, 200, { me: { username: user.username, name: user.name } });
+  }
+
   if (method === 'POST' && route === '/signup') {
+    if (!allowPasswordAuth) throw fail(403, 'Password registration is disabled');
     rateLimit(req);
     const b = await readBody(req);
     const username = str(b.username, 20).toLowerCase();
@@ -220,6 +387,7 @@ async function api(req, res, url) {
   }
 
   if (method === 'POST' && route === '/login') {
+    if (!allowPasswordAuth) throw fail(403, 'Password login is disabled');
     rateLimit(req);
     const b = await readBody(req);
     const u = db.users[str(b.username, 20).toLowerCase()];
