@@ -27,10 +27,18 @@ function h(tag, attrs = {}, ...kids) {
   return e;
 }
 function split(el, text, delay = 0) {
-  el.textContent = ''; el.setAttribute('aria-label', text);
-  [...text].forEach((c, i) => {
-    const s = h('span', { class: 'ch', 'aria-hidden': 'true' }, h('i', { style: `--i:${i};--d:${delay}ms` }, c === ' ' ? ' ' : c));
-    el.append(s);
+  el.textContent = '';
+  el.setAttribute('aria-label', text);
+  let charIdx = 0;
+  const words = String(text || '').split(' ');
+  words.forEach((word, wIdx) => {
+    if (wIdx > 0) el.append(document.createTextNode(' '));
+    const wordSpan = h('span', { class: 'word-wrap' });
+    [...word].forEach((c) => {
+      const s = h('span', { class: 'ch', 'aria-hidden': 'true' }, h('i', { style: `--i:${charIdx++};--d:${delay}ms` }, c));
+      wordSpan.append(s);
+    });
+    el.append(wordSpan);
   });
   return el;
 }
