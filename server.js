@@ -1,4 +1,4 @@
-// Class Portfolio server — zero dependencies, needs Node 18+.
+// Class Portfolio server — Node 18+ with Neon PostgreSQL & local JSON fallback.
 // Run:  node server.js     then open http://localhost:3000
 const http = require('http');
 const fs = require('fs');
@@ -22,12 +22,12 @@ try {
 } catch {}
 
 const { isAuthorizedEmail, normalize: normalizeEmail, ACCESS_DENIED_MESSAGE } = require('./public/email-rule.js');
+const database = require('./db.js');
 
 const PORT = process.env.PORT || 3000;
 const MAX_STUDENTS = 29;
 const PUBLIC = path.join(__dirname, 'public');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SESSION_DAYS = 30;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -60,26 +60,23 @@ function allocateUsername(email) {
   const base = usernameFromEmail(email);
   let candidate = base;
   let counter = 2;
-  while (db.users[candidate] && db.users[candidate].email !== email) {
+  const users = database.getUsers();
+  while (users[candidate] && users[candidate].email !== email) {
     const suffix = String(counter++);
     candidate = (base.slice(0, 20 - suffix.length) + suffix);
   }
   return candidate;
 }
 
-fs.mkdirSync(DATA_DIR, { recursive: true });
-let db = { users: {}, sessions: {} };
-let lastMtime = 0;
-
-function seedPreMadeAccounts() {
-  let changed = false;
+async function seedPreMadeAccounts() {
+  const users = database.getUsers();
   for (const email of PRE_MADE_EMAILS) {
-    const exists = Object.values(db.users).some((u) => u.email === email);
+    const exists = Object.values(users).some((u) => u.email === email);
     if (exists) continue;
-    if (Object.keys(db.users).length >= MAX_STUDENTS) break;
+    if (Object.keys(users).length >= MAX_STUDENTS) break;
     const username = allocateUsername(email);
     const name = nameFromEmail(email);
-    db.users[username] = {
+    const user = {
       username,
       name,
       email,
@@ -97,33 +94,8 @@ function seedPreMadeAccounts() {
       created: Date.now(),
       updated: Date.now(),
     };
-    changed = true;
+    await database.saveUser(user);
   }
-  if (changed) save();
-}
-
-function loadDb() {
-  try {
-    if (!fs.existsSync(DB_FILE)) return;
-    const stat = fs.statSync(DB_FILE);
-    if (stat.mtimeMs > lastMtime) {
-      const fresh = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-      fresh.users ??= {};
-      fresh.sessions ??= {};
-      db = fresh;
-      lastMtime = stat.mtimeMs;
-      seedPreMadeAccounts();
-    }
-  } catch {}
-}
-loadDb();
-seedPreMadeAccounts();
-
-function save() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(DB_FILE + '.tmp', JSON.stringify(db));
-  fs.renameSync(DB_FILE + '.tmp', DB_FILE);
-  try { lastMtime = fs.statSync(DB_FILE).mtimeMs; } catch {}
 }
 
 /* ---------- helpers ---------- */
@@ -163,20 +135,20 @@ function readBody(req) {
 function currentUser(req) {
   const m = /(?:^|;\s*)sid=([a-f0-9]{64})/.exec(req.headers.cookie || '');
   if (!m) return null;
-  const s = db.sessions[sha(m[1])];
+  const s = database.getSession(sha(m[1]));
   if (!s || s.exp < Date.now()) return null;
-  return db.users[s.u] || null;
+  return database.getUser(s.u) || null;
 }
-function startSession(res, username) {
+async function startSession(res, username) {
   const token = crypto.randomBytes(32).toString('hex');
-  db.sessions[sha(token)] = { u: username, exp: Date.now() + SESSION_DAYS * 864e5 };
-  save();
+  const exp = Date.now() + SESSION_DAYS * 864e5;
+  await database.saveSession(sha(token), username, exp);
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 86400}${secure}`);
 }
-function endSession(req, res) {
+async function endSession(req, res) {
   const m = /(?:^|;\s*)sid=([a-f0-9]{64})/.exec(req.headers.cookie || '');
-  if (m) { delete db.sessions[sha(m[1])]; save(); }
+  if (m) { await database.deleteSession(sha(m[1])); }
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`);
 }
@@ -239,7 +211,7 @@ function sanitizeProfile(b) {
 }
 
 function ordered() {
-  return Object.values(db.users).sort((a, b) => a.created - b.created);
+  return Object.values(database.getUsers()).sort((a, b) => a.created - b.created);
 }
 function publicProfile(u, n) {
   return {
@@ -305,7 +277,6 @@ async function verifyGoogle(credential) {
 
 /* ---------- API ---------- */
 async function api(req, res, url) {
-  loadDb();
   const route = url.pathname.slice(4); // strip /api
   const method = req.method;
   const me = currentUser(req);
@@ -318,6 +289,7 @@ async function api(req, res, url) {
       max: MAX_STUDENTS,
       googleClientId: GOOGLE_CLIENT_ID || null,
       allowPasswordLogin: allowPasswordAuth,
+      isDatabaseConnected: database.isPostgres(),
     });
   }
 
@@ -338,7 +310,7 @@ async function api(req, res, url) {
   }
 
   if (method === 'GET' && (m = /^\/avatar\/([a-z0-9_]{3,20})$/.exec(route))) {
-    const u = db.users[m[1]];
+    const u = database.getUser(m[1]);
     const mm = u?.avatar && /^data:(image\/\w+);base64,(.+)$/.exec(u.avatar);
     if (!mm) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'Content-Type': mm[1], 'Cache-Control': 'public, max-age=31536000, immutable' });
@@ -352,21 +324,22 @@ async function api(req, res, url) {
     const gUser = await verifyGoogle(credential);
 
     // Look for existing user by linked googleId
-    let user = Object.values(db.users).find((u) => u.googleId === gUser.sub);
+    let user = database.getUserByGoogleId(gUser.sub);
 
     // If not found, match by verified email (e.g. pre-made account)
     if (!user) {
-      user = Object.values(db.users).find((u) => u.email === gUser.email && !u.googleId);
-      if (user) {
+      user = database.getUserByEmail(gUser.email);
+      if (user && !user.googleId) {
         user.googleId = gUser.sub;
         user.updated = Date.now();
-        save();
+        await database.saveUser(user);
       }
     }
 
     // If still not found, create a new student account
     if (!user) {
-      if (Object.keys(db.users).length >= MAX_STUDENTS) {
+      const currentUsers = database.getUsers();
+      if (Object.keys(currentUsers).length >= MAX_STUDENTS) {
         throw fail(403, 'All ' + MAX_STUDENTS + ' spots are taken');
       }
       const username = allocateUsername(gUser.email);
@@ -388,11 +361,10 @@ async function api(req, res, url) {
         created: Date.now(),
         updated: Date.now(),
       };
-      db.users[username] = user;
-      save();
+      await database.saveUser(user);
     }
 
-    startSession(res, user.username);
+    await startSession(res, user.username);
     return send(res, 200, { me: { username: user.username, name: user.name } });
   }
 
@@ -406,16 +378,16 @@ async function api(req, res, url) {
     if (!/^[a-z0-9_]{3,20}$/.test(username)) throw fail(400, 'User ID: 3–20 letters, numbers or _');
     if (password.length < 6 || password.length > 100) throw fail(400, 'Password needs at least 6 characters');
     if (!name) throw fail(400, 'Tell us your name');
-    if (db.users[username]) throw fail(409, 'That user ID is taken');
-    if (Object.keys(db.users).length >= MAX_STUDENTS) throw fail(403, 'All ' + MAX_STUDENTS + ' spots are taken');
+    if (database.getUser(username)) throw fail(409, 'That user ID is taken');
+    if (Object.keys(database.getUsers()).length >= MAX_STUDENTS) throw fail(403, 'All ' + MAX_STUDENTS + ' spots are taken');
     const { salt, hash } = hashPassword(password);
-    db.users[username] = {
+    const newUser = {
       username, name, salt, hash, tagline: '', role: '', bio: '', skills: [],
       links: { github: '', linkedin: '', website: '', instagram: '', email: '' },
       projects: [], theme: 0, avatar: '', created: Date.now(), updated: Date.now(),
     };
-    save();
-    startSession(res, username);
+    await database.saveUser(newUser);
+    await startSession(res, username);
     return send(res, 200, { me: { username, name } });
   }
 
@@ -423,16 +395,16 @@ async function api(req, res, url) {
     if (!allowPasswordAuth) throw fail(403, 'Password login is disabled');
     rateLimit(req);
     const b = await readBody(req);
-    const u = db.users[str(b.username, 20).toLowerCase()];
+    const u = database.getUser(str(b.username, 20).toLowerCase());
     // run the hash either way so timing doesn't reveal which IDs exist
     const ok = u ? checkPassword(String(b.password || ''), u) : (hashPassword('x'), false);
     if (!ok) throw fail(401, 'Wrong user ID or password');
-    startSession(res, u.username);
+    await startSession(res, u.username);
     return send(res, 200, { me: { username: u.username, name: u.name } });
   }
 
   if (method === 'POST' && route === '/logout') {
-    endSession(req, res);
+    await endSession(req, res);
     return send(res, 200, { ok: true });
   }
 
@@ -446,14 +418,12 @@ async function api(req, res, url) {
   if (method === 'PUT' && route === '/profile') {
     const clean = sanitizeProfile(await readBody(req));
     Object.assign(me, clean, { updated: Date.now() });
-    save();
+    await database.saveUser(me);
     return send(res, 200, { profile: publicProfile(me, ordered().findIndex((u) => u.username === me.username) + 1), me: { username: me.username, name: me.name } });
   }
 
   if (method === 'DELETE' && route === '/account') {
-    delete db.users[me.username];
-    for (const k of Object.keys(db.sessions)) if (db.sessions[k].u === me.username) delete db.sessions[k];
-    save();
+    await database.deleteUser(me.username);
     const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
     res.setHeader('Set-Cookie', `sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`);
     return send(res, 200, { ok: true });
@@ -485,7 +455,7 @@ function serveStatic(req, res, url) {
   });
 }
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
   const url = new URL(req.url, 'http://x');
@@ -497,4 +467,15 @@ http.createServer(async (req, res) => {
     if (!e.status) console.error(e);
     if (!res.headersSent) send(res, e.status || 500, { error: e.status ? e.message : 'Server error' });
   }
-}).listen(PORT, () => console.log(`\n  Class portfolio running → http://localhost:${PORT}\n`));
+});
+
+async function main() {
+  await database.init({ dataDir: DATA_DIR });
+  await seedPreMadeAccounts();
+  server.listen(PORT, () => console.log(`\n  Class portfolio running → http://localhost:${PORT}\n`));
+}
+
+main().catch((err) => {
+  console.error('Fatal startup error:', err);
+  process.exit(1);
+});

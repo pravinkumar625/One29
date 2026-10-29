@@ -1,4 +1,7 @@
-# Ignore student data and temporary files
+# Dependencies
+node_modules/
+
+# Student data and temporary files
 data/
 *.tmp
 .env
