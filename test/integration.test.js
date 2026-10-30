@@ -156,15 +156,20 @@ describe('Google Auth & Access Control - Integration Tests', () => {
     } catch {}
   });
 
-  it('creates the 3 pre-made student accounts on server start', async () => {
+  it('creates the 3 pre-made student accounts on server start and reports max 30 by default', async () => {
     const res = await makeRequest(baseUrl, '/api/students');
     assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.data.max, 30);
     const students = res.data.students;
     assert.strictEqual(students.length, 3);
     const names = students.map((s) => s.name);
     assert.ok(names.includes('Thrishank Kumar'));
     assert.ok(names.includes('Lohith M'));
     assert.ok(names.includes('Pravin Kumar'));
+
+    const meRes = await makeRequest(baseUrl, '/api/me');
+    assert.strictEqual(meRes.status, 200);
+    assert.strictEqual(meRes.data.max, 30);
   });
 
   it('links a seeded email to its pre-made page on first Google sign-in', async () => {

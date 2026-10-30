@@ -1,7 +1,7 @@
 {
   "name": "class-portfolio",
   "version": "1.0.0",
-  "description": "Class of ’26 portfolio — 29 students, 29 profiles, one site",
+  "description": "Class of ’29 portfolio — 30 students, 30 profiles, one site",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,5 +9,14 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1159.0",
+    "@aws-sdk/s3-request-presigner": "^3.1159.0",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.14"
   }
 }

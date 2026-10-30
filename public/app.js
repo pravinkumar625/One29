@@ -1,5 +1,7 @@
-/* Class of ’26 portfolio — front end. All user text is inserted with textContent (never innerHTML). */
+/* Class of ’29 portfolio — front end. All user text is inserted with textContent (never innerHTML). */
 'use strict';
+const CLASS_LABEL = '’29';
+const CLASS_NAME = `Class of ${CLASS_LABEL}`;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -51,10 +53,15 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 /* ---------- state ---------- */
-let me = null, MAX = 29, students = [], googleClientId = null, allowPasswordLogin = true;
+let me = null, MAX = 30, count = 0, total = 0, students = [], googleClientId = null, allowPasswordLogin = true;
 async function loadBase() {
-  const [m, s] = await Promise.all([api('/me'), api('/students')]);
-  me = m.me; MAX = s.max; students = s.students;
+  const reqLimit = MAX > 60 ? 30 : Math.max(60, MAX);
+  const [m, s] = await Promise.all([api('/me'), api('/students?limit=' + reqLimit + '&offset=0')]);
+  me = m.me;
+  MAX = s.max || m.max || 30;
+  count = typeof s.count === 'number' ? s.count : (s.students ? s.students.length : 0);
+  total = typeof s.total === 'number' ? s.total : count;
+  students = s.students || [];
   googleClientId = m.googleClientId;
   allowPasswordLogin = m.allowPasswordLogin;
 }
@@ -160,122 +167,212 @@ const observe = (root) => $$('.rv', root).forEach((el) => io.observe(el));
 const avatarUrl = (s) => `/api/avatar/${s.username}?v=${s.v}`;
 
 function homeView() {
-  const joined = students.length, open = MAX - joined;
+  const joined = count, open = Math.max(0, MAX - joined);
   const el = h('div', { class: 'home' });
 
   // hero
   const l1 = split(h('span', { class: 'l1' }), 'Class', 150);
-  const l2t = split(h('span'), '’26', 450);
-  const screenB = h('b', {}, joined ? students[0].name : 'You?');
+  const l2t = split(h('span'), CLASS_LABEL, 450);
+  const screenB = h('b', {}, joined && students.length ? students[0].name : 'You?');
   const num = h('b', { class: 'num' }, String(joined));
   const card = h('div', { class: 'card-wrap' },
     h('div', { class: 'idcard' },
       h('div', { class: 'holo' }),
       h('div', { class: 'screen' }, screenB),
       h('div', { class: 'row' }, h('span', { class: 'num' }, pad(joined)), h('small', {}, `of ${MAX}`, h('br'), 'joined')),
-      h('div', { class: 'tag' }, 'Class of ’26', h('br'), 'Access pass'),
+      h('div', { class: 'tag' }, CLASS_NAME, h('br'), 'Access pass'),
       h('div', { class: 'bars' })));
   let k = 0;
-  if (joined > 1) {
+  if (students.length > 1) {
     const iv = setInterval(() => {
       if (!screenB.isConnected) return clearInterval(iv);
-      k = (k + 1) % joined; screenB.textContent = students[k].name;
+      k = (k + 1) % students.length; screenB.textContent = students[k].name;
       screenB.classList.remove('glitch'); void screenB.offsetWidth; screenB.classList.add('glitch');
     }, 1800);
   }
   const hero = h('header', { class: 'hero' },
-    h('h1', { class: 'mega', 'aria-label': 'Class of 26' }, l1, h('span', { class: 'l2' }, h('span', { class: 'script' }, 'of'), l2t)),
+    h('h1', { class: 'mega', 'aria-label': CLASS_NAME }, l1, h('span', { class: 'l2' }, h('span', { class: 'script' }, 'of'), l2t)),
     card,
     h('p', { class: 'hero-sub' }, `${MAX} students · ${MAX} portfolios · one page`),
     h('a', { class: 'btn mag hero-cta', href: me ? '#/me' : '#/signup' }, h('span', {}, me ? 'My page' : 'Claim your spot'), h('span', {}, '→')),
     h('div', { class: 'cue', 'aria-hidden': 'true' }, '↓'));
 
   // marquee
-  const names = joined ? students.map((s) => s.name) : ['Be the first'];
+  // If MAX <= 60: marquee uses everyone
+  // If MAX > 60: marquee uses a sample of up to 30 names
+  const marqueeList = MAX <= 60 ? students : students.slice(0, 30);
+  const names = marqueeList.length ? marqueeList.map((s) => s.name) : ['Be the first'];
   const unit = names.flatMap((n) => [h('span', {}, n), h('span', {}, h('em', {}, '✦'))]);
   const track = h('div', { class: 'track' }, ...unit, ...unit.map((n) => n.cloneNode(true)), ...unit.map((n) => n.cloneNode(true)), ...unit.map((n) => n.cloneNode(true)));
   const marquee = h('div', { class: 'marquee', 'aria-hidden': 'true' }, track);
 
-  // crew
-  const renderTiles = (list, isFiltered = false) => {
-    const tiles = list.map((s, i) => {
+  const grid = h('div', { class: 'grid' });
+  let crew;
+
+  if (MAX <= 60) {
+    // Mode 1: Small class (<= 60 students) - ORIGINAL GRID LOOK
+    // Every joined student first, then one separate numbered "open spot" tile for each remaining spot (joined+1 to MAX)
+    const tiles = students.map((s, i) => {
       const tile = h('a', { class: 'tile rv in', href: `#/u/${s.username}`, style: `--d:${(i % 6) * 70}ms`, 'aria-label': s.name },
-        h('div', { class: 'top' }, h('span', {}, pad(s.n)), h('span', {}, s.role || 'Student')),
+        h('div', { class: 'top' }, h('span', {}, pad(s.n || (i + 1))), h('span', {}, s.role || 'Student')),
         h('div', { class: 'face' }, s.hasAvatar ? h('img', { class: 'blobimg', src: avatarUrl(s), alt: '', loading: 'lazy' }) : h('div', { class: 'initial' }, (s.name || '?')[0].toUpperCase())),
         h('div', {}, h('h3', {}, s.name), h('p', {}, s.tagline || ' ')),
         h('span', { class: 'peek' }, 'VIEW ↗'));
-      tile.addEventListener('pointermove', (e) => { const r = tile.getBoundingClientRect(); tile.style.setProperty('--px', (e.clientX - r.left + 14) + 'px'); tile.style.setProperty('--py', (e.clientY - r.top + 14) + 'px'); });
+      tile.addEventListener('pointermove', (e) => {
+        const r = tile.getBoundingClientRect();
+        tile.style.setProperty('--px', (e.clientX - r.left + 14) + 'px');
+        tile.style.setProperty('--py', (e.clientY - r.top + 14) + 'px');
+      });
       return tile;
     });
 
-    if (!isFiltered) {
-      for (let i = joined; i < MAX; i++) {
-        tiles.push(h('a', { class: 'tile open rv in', href: me ? '#/me' : '#/signup', style: `--d:${(i % 6) * 70}ms`, 'aria-label': 'Open spot' },
-          h('div', { class: 'top' }, h('span', {}, pad(i + 1)), h('span', {}, 'Open')),
+    for (let i = joined; i < MAX; i++) {
+      tiles.push(h('a', { class: 'tile open rv in', href: me ? '#/me' : '#/signup', style: `--d:${(i % 6) * 70}ms`, 'aria-label': 'Open spot' },
+        h('div', { class: 'top' }, h('span', {}, pad(i + 1)), h('span', {}, 'Open')),
+        h('div', { class: 'face' }, '+'),
+        h('div', {}, h('h3', {}, me ? 'Spot waiting' : 'Claim this spot'))));
+    }
+
+    grid.replaceChildren(...tiles);
+
+    crew = h('section', { class: 'sec', id: 'crew' },
+      h('div', { class: 'sec-head rv' }, h('h2', {}, 'The crew'), h('p', {}, h('b', {}, `${pad(joined)}/${MAX}`), open ? `${open} spots left` : 'Full house')),
+      grid);
+  } else {
+    // Mode 2: Large class (> 60 students) - SCALABLE BEHAVIOR
+    // Search box, infinite scroll, single "N spots left" tile, sample marquee
+    let crewList = [...students];
+    let offset = crewList.length;
+    const limit = 30;
+    let hasMore = total > crewList.length;
+    let loadingMore = false;
+    let currentQ = '';
+
+    const renderTiles = (list, isFiltered = false) => {
+      const tiles = list.map((s, i) => {
+        const tile = h('a', { class: 'tile rv in', href: `#/u/${s.username}`, style: `--d:${(i % 6) * 70}ms`, 'aria-label': s.name },
+          h('div', { class: 'top' }, h('span', {}, pad(s.n || (i + 1))), h('span', {}, s.role || 'Student')),
+          h('div', { class: 'face' }, s.hasAvatar ? h('img', { class: 'blobimg', src: avatarUrl(s), alt: '', loading: 'lazy' }) : h('div', { class: 'initial' }, (s.name || '?')[0].toUpperCase())),
+          h('div', {}, h('h3', {}, s.name), h('p', {}, s.tagline || ' ')),
+          h('span', { class: 'peek' }, 'VIEW ↗'));
+        tile.addEventListener('pointermove', (e) => {
+          const r = tile.getBoundingClientRect();
+          tile.style.setProperty('--px', (e.clientX - r.left + 14) + 'px');
+          tile.style.setProperty('--py', (e.clientY - r.top + 14) + 'px');
+        });
+        return tile;
+      });
+
+      if (!isFiltered && open > 0) {
+        tiles.push(h('a', { class: 'tile open rv in', href: me ? '#/me' : '#/signup', 'aria-label': `${open} spots left` },
+          h('div', { class: 'top' }, h('span', {}, pad(open)), h('span', {}, 'Open')),
           h('div', { class: 'face' }, '+'),
-          h('div', {}, h('h3', {}, me ? 'Spot waiting' : 'Claim this spot'))));
+          h('div', {}, h('h3', {}, `${open} spots left`), h('p', {}, me ? 'Spot waiting' : 'Claim your spot'))));
       }
-    }
-    return tiles;
-  };
+      return tiles;
+    };
 
-  const grid = h('div', { class: 'grid' });
-  grid.replaceChildren(...renderTiles(students));
+    const sentinel = h('div', { class: 'grid-sentinel' }, 'Loading more…');
 
-  const searchInput = h('input', {
-    class: 'crew-search-input',
-    type: 'search',
-    placeholder: 'Search crew by name, role, or skill…',
-    'aria-label': 'Filter students by name, role or skill'
-  });
-  const searchCount = h('span', { class: 'crew-search-count' });
-  const clearBtn = h('button', { class: 'crew-search-clear', type: 'button', 'aria-label': 'Clear search', style: 'display:none' }, '✕');
+    const updateGridDisplay = (isFiltered = false) => {
+      const tiles = renderTiles(crewList, isFiltered);
+      if (hasMore) {
+        grid.replaceChildren(...tiles, sentinel);
+      } else {
+        grid.replaceChildren(...tiles);
+      }
+    };
 
-  const onSearch = () => {
-    const q = searchInput.value.trim().toLowerCase();
-    clearBtn.style.display = q ? 'inline-block' : 'none';
-    if (!q) {
-      searchCount.textContent = '';
-      grid.classList.remove('empty');
-      grid.replaceChildren(...renderTiles(students));
-      return;
-    }
-    const filtered = students.filter((s) => {
-      const name = (s.name || '').toLowerCase();
-      const role = (s.role || '').toLowerCase();
-      const skills = (s.skills || []).map((k) => k.toLowerCase()).join(' ');
-      return name.includes(q) || role.includes(q) || skills.includes(q);
+    updateGridDisplay(false);
+
+    // IntersectionObserver for infinite scrolling
+    const scrollIo = new IntersectionObserver(async (entries) => {
+      if (!entries[0].isIntersecting || loadingMore || !hasMore) return;
+      loadingMore = true;
+      try {
+        const qParam = currentQ ? `&q=${encodeURIComponent(currentQ)}` : '';
+        const data = await api(`/students?limit=${limit}&offset=${offset}${qParam}`);
+        if (data.students && data.students.length > 0) {
+          crewList.push(...data.students);
+          offset += data.students.length;
+          hasMore = offset < (currentQ ? data.total : data.count);
+          updateGridDisplay(Boolean(currentQ));
+        } else {
+          hasMore = false;
+          sentinel.remove();
+        }
+      } catch (err) {
+        console.warn('Could not load more students:', err);
+      } finally {
+        loadingMore = false;
+      }
+    }, { rootMargin: '250px' });
+
+    scrollIo.observe(sentinel);
+
+    const searchInput = h('input', {
+      class: 'crew-search-input',
+      type: 'search',
+      placeholder: 'Search crew by name, role, or skill…',
+      'aria-label': 'Filter students by name, role or skill'
     });
-    searchCount.textContent = `${filtered.length} found`;
-    if (filtered.length === 0) {
-      grid.classList.add('empty');
-      const emptyMsg = h('div', { class: 'grid-empty-state' },
-        h('p', {}, `No students found matching “${searchInput.value.trim()}”`),
-        h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { searchInput.value = ''; onSearch(); searchInput.focus(); } }, h('span', {}, 'Show all crew'))
-      );
-      grid.replaceChildren(emptyMsg);
-    } else {
-      grid.classList.remove('empty');
-      grid.replaceChildren(...renderTiles(filtered, true));
-    }
-  };
+    const searchCount = h('span', { class: 'crew-search-count' });
+    const clearBtn = h('button', { class: 'crew-search-clear', type: 'button', 'aria-label': 'Clear search', style: 'display:none' }, '✕');
 
-  searchInput.addEventListener('input', onSearch);
-  clearBtn.addEventListener('click', () => { searchInput.value = ''; onSearch(); searchInput.focus(); });
+    let searchTimeout;
+    const doSearch = () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(async () => {
+        const q = searchInput.value.trim();
+        clearBtn.style.display = q ? 'inline-block' : 'none';
+        currentQ = q;
+        offset = 0;
+        loadingMore = true;
 
-  const searchBar = h('div', { class: 'crew-search-bar rv' },
-    h('div', { class: 'crew-search-box' },
-      h('span', { class: 'crew-search-icon', 'aria-hidden': 'true' }, '⌕'),
-      searchInput,
-      clearBtn
-    ),
-    searchCount
-  );
+        try {
+          const qParam = q ? `&q=${encodeURIComponent(q)}` : '';
+          const data = await api(`/students?limit=${limit}&offset=0${qParam}`);
+          crewList = data.students || [];
+          offset = crewList.length;
+          hasMore = offset < (q ? data.total : data.count);
+          searchCount.textContent = q ? `${data.total} found` : '';
 
-  const crew = h('section', { class: 'sec', id: 'crew' },
-    h('div', { class: 'sec-head rv' }, h('h2', {}, 'The crew'), h('p', {}, h('b', {}, `${pad(joined)}/${MAX}`), open ? `${open} spots left` : 'Full house')),
-    searchBar,
-    grid);
+          if (crewList.length === 0) {
+            grid.classList.add('empty');
+            const emptyMsg = h('div', { class: 'grid-empty-state' },
+              h('p', {}, `No students found matching “${q}”`),
+              h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { searchInput.value = ''; doSearch(); searchInput.focus(); } }, h('span', {}, 'Show all crew'))
+            );
+            grid.replaceChildren(emptyMsg);
+          } else {
+            grid.classList.remove('empty');
+            updateGridDisplay(Boolean(q));
+          }
+        } catch (err) {
+          console.warn('Search error:', err);
+        } finally {
+          loadingMore = false;
+        }
+      }, 200);
+    };
+
+    searchInput.addEventListener('input', doSearch);
+    clearBtn.addEventListener('click', () => { searchInput.value = ''; doSearch(); searchInput.focus(); });
+
+    const searchBar = h('div', { class: 'crew-search-bar rv' },
+      h('div', { class: 'crew-search-box' },
+        h('span', { class: 'crew-search-icon', 'aria-hidden': 'true' }, '⌕'),
+        searchInput,
+        clearBtn
+      ),
+      searchCount
+    );
+
+    crew = h('section', { class: 'sec', id: 'crew' },
+      h('div', { class: 'sec-head rv' }, h('h2', {}, 'The crew'), h('p', {}, h('b', {}, `${pad(joined)}/${MAX}`), open ? `${open} spots left` : 'Full house')),
+      searchBar,
+      grid);
+  }
 
   const foot = h('footer', { class: 'foot' },
     h('h2', { class: 'rv' }, me ? 'You’re in.' : 'Your turn.'),
@@ -296,8 +393,49 @@ async function profileView(username) {
   const L = s.links, linkDefs = [['GitHub', L.github], ['LinkedIn', L.linkedin], ['Instagram', L.instagram], ['Website', L.website]].filter((x) => x[1]);
   const links = linkDefs.map(([t, u]) => h('a', { class: 'btn ghost mag', href: safeUrl(u), target: '_blank', rel: 'noopener noreferrer' }, h('span', {}, t), h('span', {}, '↗')));
   if (L.email) links.push(h('a', { class: 'btn mag', href: 'mailto:' + L.email }, h('span', {}, 'Say hi'), h('span', {}, '✉')));
+  if (s.hasResume && (own || (s.resumePublic && me))) {
+    links.push(h('a', { class: 'btn ghost mag', href: `/api/resume/${encodeURIComponent(s.username)}`, target: '_blank', rel: 'noopener noreferrer' }, h('span', {}, 'Uploaded PDF'), h('span', {}, '📄 ↗')));
+  }
 
-  const projects = s.projects.map((p, i) => {
+  // Auto-generated resume controls
+  let autoResumeBox = null;
+  const canDownloadResume = own || (s.resumePublic && me);
+  if (canDownloadResume) {
+    const tplSelect = h('select', { class: 'tpl-select', 'aria-label': 'Resume Template' },
+      h('option', { value: 'classic' }, 'Classic'),
+      h('option', { value: 'modern' }, 'Modern'),
+      h('option', { value: 'minimal' }, 'Minimal')
+    );
+    const getDownloadUrl = (isInline = false) => {
+      const ep = own ? '/api/resume/auto' : `/api/resume/auto/${encodeURIComponent(s.username)}`;
+      return `${ep}?template=${encodeURIComponent(tplSelect.value)}${isInline ? '&preview=1' : ''}`;
+    };
+    const dlBtn = h('a', {
+      class: 'btn pill',
+      href: getDownloadUrl(false),
+      download: '',
+    }, h('span', {}, 'Download resume'), h('span', {}, '↓'));
+    
+    const prevBtn = h('a', {
+      class: 'btn ghost pill',
+      href: getDownloadUrl(true),
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    }, h('span', {}, 'Preview'), h('span', {}, '↗'));
+
+    tplSelect.addEventListener('change', () => {
+      dlBtn.setAttribute('href', getDownloadUrl(false));
+      prevBtn.setAttribute('href', getDownloadUrl(true));
+    });
+
+    autoResumeBox = h('div', { class: 'resume-ctrl-wrap rv' },
+      tplSelect,
+      dlBtn,
+      prevBtn
+    );
+  }
+
+  const projects = (s.projects || []).map((p, i) => {
     const inner = [
       h('span', { class: 'i' }, pad(i + 1)),
       p.image && h('div', { class: 'proj-preview' },
@@ -314,6 +452,42 @@ async function profileView(username) {
       : h('div', { class: 'proj rv' + (p.image ? ' has-shot' : '') }, inner);
   });
 
+  const experienceItems = (s.experience || []).map((exp) => {
+    const dateText = [exp.start, exp.end].filter(Boolean).join(' – ');
+    return h('div', { class: 'p-item rv' },
+      h('div', {},
+        h('h3', {}, exp.title || 'Role'),
+        exp.organisation && h('div', { class: 'p-item-sub' }, exp.organisation),
+        exp.description && h('p', { class: 'p-item-desc' }, exp.description)
+      ),
+      dateText && h('div', { class: 'p-item-date' }, dateText)
+    );
+  });
+
+  const educationItems = (s.education || []).map((edu) => {
+    const degreeLine = [edu.degree, edu.field].filter(Boolean).join(' in ');
+    const dateText = [edu.start_year, edu.end_year].filter(Boolean).join(' – ');
+    return h('div', { class: 'p-item rv' },
+      h('div', {},
+        h('h3', {}, degreeLine || edu.school || 'Education'),
+        edu.school && degreeLine && h('div', { class: 'p-item-sub' }, edu.school)
+      ),
+      dateText && h('div', { class: 'p-item-date' }, dateText)
+    );
+  });
+
+  const certItems = (s.certifications || []).map((c) => {
+    const meta = [c.issuer, c.year].filter(Boolean).join(' • ');
+    return h('div', { class: 'p-item rv' },
+      h('div', {},
+        h('h3', {}, c.name),
+        meta && h('div', { class: 'p-item-sub' }, meta)
+      )
+    );
+  });
+
+  const achItems = (s.achievements || []).map((ach) => h('span', { class: 'chip' }, ach));
+
   const el = h('section', { class: 'profile' },
     h('div', { class: 'p-top' }, h('span', {}, `Student ${pad(s.n)} / ${MAX}`), h('span', {}, '@' + s.username)),
     name,
@@ -322,10 +496,16 @@ async function profileView(username) {
       h('div', { class: 'rv', style: '--d:150ms' },
         h('span', { class: 'p-role' }, s.role || 'Student'),
         s.tagline && h('div', { class: 'p-tag' }, s.tagline),
+        s.location && h('div', { style: 'font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin-bottom:12px;' }, '📍 ' + s.location),
         s.bio ? h('p', { class: 'p-bio' }, s.bio) : h('p', { class: 'p-bio' }, own ? 'Add a bio so people know who you are →' : 'Still writing the story…'),
         s.skills.length > 0 && h('div', { class: 'chips' }, s.skills.map((k) => h('span', { class: 'chip' }, k))),
-        links.length > 0 && h('div', { class: 'links' }, links))),
+        links.length > 0 && h('div', { class: 'links' }, links),
+        autoResumeBox)),
     projects.length > 0 && h('div', { class: 'p-sec' }, h('h2', { class: 'rv' }, 'Selected work'), h('div', {}, projects)),
+    experienceItems.length > 0 && h('div', { class: 'p-sec' }, h('h2', { class: 'rv' }, 'Experience'), h('div', {}, experienceItems)),
+    educationItems.length > 0 && h('div', { class: 'p-sec' }, h('h2', { class: 'rv' }, 'Education'), h('div', {}, educationItems)),
+    certItems.length > 0 && h('div', { class: 'p-sec' }, h('h2', { class: 'rv' }, 'Certifications'), h('div', {}, certItems)),
+    achItems.length > 0 && h('div', { class: 'p-sec' }, h('h2', { class: 'rv' }, 'Achievements & Honors'), h('div', { class: 'chips' }, achItems)),
     data.next && data.next !== s.username && h('a', { class: 'p-next rv', href: '#/u/' + data.next }, h('small', {}, 'Next student →'), h('b', {}, data.nextName)),
     own && h('a', { class: 'btn fab', href: '#/edit' }, h('span', {}, 'Edit my page'), h('span', {}, '✎')));
   return { el, theme: s.theme, title: s.name };
@@ -543,30 +723,209 @@ function authView(mode) {
   return { el, theme: 1 };
 }
 
+async function uploadToStorage(blobOrFile, kind, contentType) {
+  const { uploadUrl, storageKey } = await api('/files/upload-url', {
+    method: 'POST',
+    body: { kind, contentType },
+  });
+  const upRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: blobOrFile,
+  });
+  if (!upRes.ok) throw new Error('Failed to upload file to storage');
+  const comp = await api('/files/complete', {
+    method: 'POST',
+    body: { storageKey, kind, mime: contentType },
+  });
+  return comp.file;
+}
+
 async function editView() {
   const { profile: p } = await api('/profile');
-  const st = { ...p, links: { ...p.links }, projects: p.projects.map((x) => ({ ...x })), skills: [...p.skills], avatar: undefined };
+  const st = {
+    ...p,
+    phone: p.phone || '',
+    location: p.location || '',
+    links: { ...p.links },
+    projects: (p.projects || []).map((x) => ({ ...x })),
+    education: (p.education || []).map((x) => ({ ...x })),
+    experience: (p.experience || []).map((x) => ({ ...x })),
+    certifications: (p.certifications || []).map((x) => ({ ...x })),
+    achievements: [...(p.achievements || [])],
+    skills: [...p.skills],
+    avatar: undefined,
+    resume_public: p.resumePublic,
+    hasResume: p.hasResume,
+  };
+
   const inp = (label, get, set, o = {}) => {
     const i = h(o.area ? 'textarea' : 'input', { placeholder: o.ph, maxlength: o.max, type: o.area ? null : 'text', rows: o.area ? 4 : null });
-    i.value = get() || ''; i.addEventListener('input', () => set(i.value));
+    i.value = get() || '';
+    i.addEventListener('input', () => {
+      set(i.value);
+      updateCompleteness();
+    });
     return h('label', { class: 'field' }, h('span', {}, label), i, o.hint && h('small', {}, o.hint));
   };
+
+  // Completeness Card Live Helper
+  const compVal = h('span', { class: 'completeness-val' }, '0/10');
+  const compFill = h('div', { class: 'completeness-fill', style: 'width: 0%' });
+  const compMissing = h('div', { class: 'completeness-missing' });
+  const compCard = h('div', { class: 'completeness-card rv' },
+    h('div', { class: 'completeness-head' },
+      h('span', { class: 'completeness-title' }, '✦ Resume Completeness'),
+      compVal
+    ),
+    h('div', { class: 'completeness-track' }, compFill),
+    compMissing
+  );
+
+  function updateCompleteness() {
+    const checks = [
+      { id: 'photo', label: 'Photo', ok: Boolean(st.avatar || p.hasAvatar) },
+      { id: 'tagline', label: 'Tagline', ok: Boolean(st.tagline && st.tagline.trim()) },
+      { id: 'bio', label: 'Bio', ok: Boolean(st.bio && st.bio.trim()) },
+      { id: 'skills', label: '3+ Skills', ok: (skills.value ? skills.value.split(',').map((x) => x.trim()).filter(Boolean).length : st.skills.length) >= 3 },
+      { id: 'project', label: 'A Project', ok: st.projects.some((pr) => pr.title && pr.title.trim()) },
+      { id: 'education', label: 'Education', ok: st.education.some((ed) => (ed.school && ed.school.trim()) || (ed.degree && ed.degree.trim())) },
+      { id: 'experience', label: 'Experience', ok: st.experience.some((ex) => (ex.title && ex.title.trim()) || (ex.organisation && ex.organisation.trim())) },
+      { id: 'links', label: 'Links', ok: Boolean(st.links.github || st.links.linkedin || st.links.website || st.links.email) },
+      { id: 'location', label: 'Location', ok: Boolean(st.location && st.location.trim()) },
+      { id: 'cert_or_ach', label: 'Certifications or Honors', ok: st.certifications.length > 0 || st.achievements.length > 0 },
+    ];
+
+    const doneCount = checks.filter((c) => c.ok).length;
+    const totalCount = checks.length;
+    const pct = Math.round((doneCount / totalCount) * 100);
+
+    compVal.textContent = `${doneCount} of ${totalCount} sections filled (${pct}%)`;
+    compFill.style.width = `${pct}%`;
+
+    const missing = checks.filter((c) => !c.ok).map((c) => c.label);
+    if (missing.length === 0) {
+      compMissing.textContent = 'Awesome! Your profile and resume are 100% complete.';
+    } else {
+      compMissing.replaceChildren(
+        h('b', {}, 'Missing: '),
+        document.createTextNode(missing.join(', '))
+      );
+    }
+  }
 
   // avatar
   const prev = h('div', { class: 'up' });
   const file = h('input', { type: 'file', accept: 'image/*', hidden: true });
   const renderAvatar = () => {
     prev.replaceChildren(
-      (st.avatar ?? (p.hasAvatar ? avatarUrl(p) : '')) ? h('img', { class: 'p-avatar', src: st.avatar ?? avatarUrl(p), alt: '' }) : h('div', { class: 'p-avatar ph' }, (st.name || '?')[0].toUpperCase()),
+      (st.avatar || p.hasAvatar) ? h('img', { class: 'p-avatar', src: st.avatar || avatarUrl(p), alt: '' }) : h('div', { class: 'p-avatar ph' }, (st.name || '?')[0].toUpperCase()),
       h('div', { class: 'links', style: 'margin:0' },
         h('button', { class: 'btn ghost', type: 'button', onclick: () => file.click() }, h('span', {}, 'Upload photo')),
-        (st.avatar ?? (p.hasAvatar ? 'x' : '')) && h('button', { class: 'btn ghost', type: 'button', onclick: () => { st.avatar = ''; renderAvatar(); } }, h('span', {}, 'Remove'))));
+        (st.avatar || p.hasAvatar) && h('button', { class: 'btn ghost', type: 'button', onclick: async () => {
+          try {
+            await api('/files', { method: 'DELETE', body: { storageKey: `users/${me.username}/avatar/` } }).catch(() => {});
+            p.hasAvatar = false;
+            st.avatar = '';
+            renderAvatar();
+            updateCompleteness();
+            toast('Photo removed');
+          } catch (e) { toast(e.message); }
+        } }, h('span', {}, 'Remove'))));
   };
   file.addEventListener('change', async () => {
     const f = file.files[0]; if (!f) return;
-    try { st.avatar = await shrink(f, 360); renderAvatar(); } catch { toast('Couldn’t read that image'); }
+    try {
+      toast('Uploading photo…');
+      const blob = await shrinkToBlob(f, 360);
+      await uploadToStorage(blob, 'avatar', 'image/jpeg');
+      p.hasAvatar = true;
+      p.v = Date.now();
+      st.avatar = avatarUrl(p);
+      renderAvatar();
+      updateCompleteness();
+      toast('Photo updated ✓');
+    } catch (err) {
+      toast(err.message || 'Couldn’t upload that image');
+    }
   });
   renderAvatar();
+
+  // resume section
+  const resumeFile = h('input', { type: 'file', accept: '.pdf,application/pdf', hidden: true });
+  const resumeBox = h('div', { class: 'resume-ed-box' });
+  const renderResume = () => {
+    const hasRes = Boolean(st.hasResume ?? p.hasResume);
+
+    // Auto-generated resume toolbar
+    const tplSelect = h('select', { class: 'tpl-select', 'aria-label': 'Resume Template' },
+      h('option', { value: 'classic' }, 'Classic'),
+      h('option', { value: 'modern' }, 'Modern (Theme Accent)'),
+      h('option', { value: 'minimal' }, 'Minimal')
+    );
+    const getDownloadUrl = (isInline = false) => `/api/resume/auto?template=${encodeURIComponent(tplSelect.value)}${isInline ? '&preview=1' : ''}`;
+    const autoDlBtn = h('a', { class: 'btn ghost sm pill', href: getDownloadUrl(false), download: '' }, h('span', {}, 'Download resume'), h('span', {}, '↓'));
+    const autoPrevBtn = h('a', { class: 'btn ghost sm pill', href: getDownloadUrl(true), target: '_blank', rel: 'noopener noreferrer' }, h('span', {}, 'Preview'), h('span', {}, '↗'));
+
+    tplSelect.addEventListener('change', () => {
+      autoDlBtn.setAttribute('href', getDownloadUrl(false));
+      autoPrevBtn.setAttribute('href', getDownloadUrl(true));
+    });
+
+    resumeBox.replaceChildren(
+      h('div', { style: 'margin-bottom:14px;' },
+        h('div', { style: 'font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;' }, 'Auto-Generated Live Resume (always up to date)'),
+        h('div', { class: 'resume-ctrl-wrap', style: 'margin:0;' }, tplSelect, autoDlBtn, autoPrevBtn)
+      ),
+      h('hr', { style: 'border:0;border-top:1px solid var(--fg);opacity:0.25;margin:14px 0;' }),
+      h('div', { class: 'resume-status' },
+        hasRes
+          ? h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;' },
+              h('span', { class: 'chip' }, 'Custom PDF attached 📄'),
+              h('a', { class: 'btn ghost sm', href: `/api/resume/${encodeURIComponent(me.username)}`, target: '_blank', rel: 'noopener noreferrer' }, h('span', {}, 'View PDF')),
+              h('button', { class: 'btn ghost sm', type: 'button', onclick: () => resumeFile.click() }, h('span', {}, 'Replace PDF')),
+              h('button', { class: 'btn ghost sm', type: 'button', onclick: async () => {
+                if (!confirm('Remove your attached resume PDF?')) return;
+                try {
+                  await api('/files', { method: 'DELETE', body: { storageKey: `users/${me.username}/resume/` } }).catch(() => {});
+                  st.hasResume = false;
+                  p.hasResume = false;
+                  renderResume();
+                  toast('Attached resume removed');
+                } catch (e) { toast(e.message); }
+              } }, h('span', {}, 'Remove'))
+            )
+          : h('div', {},
+              h('button', { class: 'btn ghost sm', type: 'button', onclick: () => resumeFile.click() }, h('span', {}, '+ Attach custom PDF resume')),
+              h('small', { style: 'display:block;margin-top:6px;opacity:0.75;' }, 'Optional manual PDF · up to 3 MB')
+            )
+      ),
+      h('label', { style: 'display:flex;align-items:center;gap:10px;cursor:pointer;margin-top:14px;font-size:13px;' },
+        h('input', {
+          type: 'checkbox',
+          checked: Boolean(st.resume_public ?? p.resumePublic),
+          onchange: (e) => { st.resume_public = e.target.checked; }
+        }),
+        h('span', {}, 'Show my resume publicly to other students (defaults to OFF)')
+      ),
+      resumeFile
+    );
+  };
+  resumeFile.addEventListener('change', async () => {
+    const f = resumeFile.files[0]; if (!f) return;
+    if (f.size > 3 * 1024 * 1024) { toast('Resume must be 3 MB or smaller'); return; }
+    try {
+      toast('Uploading resume…');
+      await uploadToStorage(f, 'resume', 'application/pdf');
+      st.hasResume = true;
+      p.hasResume = true;
+      renderResume();
+      toast('Resume uploaded ✓');
+    } catch (e) {
+      toast(e.message || 'Couldn’t upload resume');
+    }
+  });
+  renderResume();
 
   // theme
   const sw = h('div', { class: 'swatches' });
@@ -581,10 +940,14 @@ async function editView() {
       shotFile.addEventListener('change', async () => {
         const f = shotFile.files[0]; if (!f) return;
         try {
-          pr.image = await shrinkShot(f);
+          toast('Uploading screenshot…');
+          const blob = await shrinkShotToBlob(f, 1200, 750);
+          const fileInfo = await uploadToStorage(blob, 'project_image', 'image/jpeg');
+          pr.image = fileInfo.url || '';
           renderProj();
-        } catch {
-          toast('Couldn’t read screenshot image');
+          toast('Screenshot uploaded ✓');
+        } catch (e) {
+          toast(e.message || 'Couldn’t upload screenshot');
         }
       });
 
@@ -603,54 +966,158 @@ async function editView() {
       );
 
       return h('div', { class: 'proj-ed' },
-        h('button', { class: 'rm', type: 'button', onclick: () => { st.projects.splice(i, 1); renderProj(); } }, 'Remove'),
+        h('button', { class: 'rm', type: 'button', onclick: () => { st.projects.splice(i, 1); renderProj(); updateCompleteness(); } }, 'Remove'),
         inp('Project title', () => pr.title, (v) => (pr.title = v), { max: 60, ph: 'Weather app' }),
         inp('What is it?', () => pr.desc, (v) => (pr.desc = v), { max: 240, area: true, ph: 'One or two lines' }),
         inp('Link', () => pr.url, (v) => (pr.url = v), { max: 300, ph: 'github.com/you/project' }),
         h('label', { class: 'field' }, h('span', {}, 'Project screenshot'), shotPreview)
       );
     }),
-    st.projects.length < 6 && h('button', { class: 'btn ghost', type: 'button', onclick: () => { st.projects.push({ title: '', desc: '', url: '', image: '' }); renderProj(); } }, h('span', {}, '+ Add project')));
+    st.projects.length < 6 && h('button', { class: 'btn ghost', type: 'button', onclick: () => { st.projects.push({ title: '', desc: '', url: '', image: '' }); renderProj(); updateCompleteness(); } }, h('span', {}, '+ Add project')));
   };
   renderProj();
 
+  // experience
+  const expBox = h('div');
+  const renderExp = () => {
+    expBox.replaceChildren(...st.experience.map((exp, i) => {
+      return h('div', { class: 'proj-ed' },
+        h('button', { class: 'rm', type: 'button', onclick: () => { st.experience.splice(i, 1); renderExp(); updateCompleteness(); } }, 'Remove'),
+        h('div', { class: 'form2' },
+          inp('Title / Role', () => exp.title, (v) => (exp.title = v), { max: 80, ph: 'Frontend Intern' }),
+          inp('Organisation', () => exp.organisation, (v) => (exp.organisation = v), { max: 100, ph: 'Acme Corp' })
+        ),
+        h('div', { class: 'form2' },
+          inp('Start Date', () => exp.start, (v) => (exp.start = v), { max: 30, ph: 'Jun 2024' }),
+          inp('End Date', () => exp.end, (v) => (exp.end = v), { max: 30, ph: 'Present' })
+        ),
+        inp('Description', () => exp.description, (v) => (exp.description = v), { max: 400, area: true, ph: 'Key accomplishments, technologies used…' })
+      );
+    }),
+    st.experience.length < 8 && h('button', { class: 'btn ghost', type: 'button', onclick: () => { st.experience.push({ title: '', organisation: '', start: '', end: '', description: '' }); renderExp(); updateCompleteness(); } }, h('span', {}, '+ Add experience')));
+  };
+  renderExp();
+
+  // education
+  const eduBox = h('div');
+  const renderEdu = () => {
+    eduBox.replaceChildren(...st.education.map((edu, i) => {
+      return h('div', { class: 'proj-ed' },
+        h('button', { class: 'rm', type: 'button', onclick: () => { st.education.splice(i, 1); renderEdu(); updateCompleteness(); } }, 'Remove'),
+        inp('School / University', () => edu.school, (v) => (edu.school = v), { max: 100, ph: 'Kalvium / MIT' }),
+        h('div', { class: 'form2' },
+          inp('Degree', () => edu.degree, (v) => (edu.degree = v), { max: 80, ph: 'B.Tech / Bachelor' }),
+          inp('Field of Study', () => edu.field, (v) => (edu.field = v), { max: 80, ph: 'Computer Science' })
+        ),
+        h('div', { class: 'form2' },
+          inp('Start Year', () => edu.start_year, (v) => (edu.start_year = v), { max: 20, ph: '2025' }),
+          inp('End Year (or Expected)', () => edu.end_year, (v) => (edu.end_year = v), { max: 20, ph: '2029' })
+        )
+      );
+    }),
+    st.education.length < 6 && h('button', { class: 'btn ghost', type: 'button', onclick: () => { st.education.push({ school: '', degree: '', field: '', start_year: '', end_year: '' }); renderEdu(); updateCompleteness(); } }, h('span', {}, '+ Add education')));
+  };
+  renderEdu();
+
+  // certifications
+  const certBox = h('div');
+  const renderCert = () => {
+    certBox.replaceChildren(...st.certifications.map((c, i) => {
+      return h('div', { class: 'proj-ed' },
+        h('button', { class: 'rm', type: 'button', onclick: () => { st.certifications.splice(i, 1); renderCert(); updateCompleteness(); } }, 'Remove'),
+        h('div', { class: 'form2' },
+          inp('Certification Name', () => c.name, (v) => (c.name = v), { max: 100, ph: 'AWS Certified Cloud Practitioner' }),
+          inp('Issuer', () => c.issuer, (v) => (c.issuer = v), { max: 100, ph: 'Amazon Web Services' })
+        ),
+        inp('Year / Date', () => c.year, (v) => (c.year = v), { max: 20, ph: '2025' })
+      );
+    }),
+    st.certifications.length < 10 && h('button', { class: 'btn ghost', type: 'button', onclick: () => { st.certifications.push({ name: '', issuer: '', year: '' }); renderCert(); updateCompleteness(); } }, h('span', {}, '+ Add certification')));
+  };
+  renderCert();
+
+  // achievements
+  const achBox = h('div');
+  const renderAch = () => {
+    achBox.replaceChildren(...st.achievements.map((a, i) => {
+      const iInput = h('input', { placeholder: '1st place in National Hackathon 2025', maxlength: 140 });
+      iInput.value = a;
+      iInput.addEventListener('input', () => { st.achievements[i] = iInput.value; updateCompleteness(); });
+      return h('div', { style: 'display:flex;align-items:center;gap:12px;margin-bottom:12px;' },
+        h('label', { class: 'field', style: 'flex:1;margin:0;' }, iInput),
+        h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { st.achievements.splice(i, 1); renderAch(); updateCompleteness(); } }, h('span', {}, 'Remove'))
+      );
+    }),
+    st.achievements.length < 10 && h('button', { class: 'btn ghost', type: 'button', onclick: () => { st.achievements.push(''); renderAch(); updateCompleteness(); } }, h('span', {}, '+ Add achievement / honor')));
+  };
+  renderAch();
+
   const skills = h('input', { placeholder: 'React, Python, Figma…', maxlength: 300 });
   skills.value = st.skills.join(', ');
+  skills.addEventListener('input', () => updateCompleteness());
+
   const err = h('div', { class: 'err', role: 'alert' });
   const saveBtn = h('button', { class: 'btn', type: 'submit' }, h('span', {}, 'Save changes'), h('span', {}, '✓'));
 
   const form = h('form', { novalidate: true },
+    compCard,
     h('div', { class: 'ed-h', style: 'border:0;margin-top:0;padding-top:0' }, 'Photo & vibe'), prev, file,
+    h('div', { class: 'ed-h' }, 'Resume'), resumeBox,
     h('div', { class: 'field' }, h('span', {}, 'Page colour'), sw),
     h('div', { class: 'ed-h' }, 'About you'),
     h('div', { class: 'form2' },
       inp('Name', () => st.name, (v) => (st.name = v), { max: 40 }),
       inp('Role / what you do', () => st.role, (v) => (st.role = v), { max: 40, ph: 'Full-stack dev' })),
+    h('div', { class: 'form2' },
+      inp('Location', () => st.location, (v) => (st.location = v), { max: 100, ph: 'Bengaluru, India' }),
+      inp('Phone (Private · for resume only)', () => st.phone, (v) => (st.phone = v), { max: 30, ph: '+91 98765 43210' })),
     inp('One-line tagline', () => st.tagline, (v) => (st.tagline = v), { max: 80, ph: 'I build things that move' }),
-    inp('Bio', () => st.bio, (v) => (st.bio = v), { max: 600, area: true, ph: 'Tell people who you are…' }),
+    inp('Bio (Professional summary)', () => st.bio, (v) => (st.bio = v), { max: 600, area: true, ph: 'Tell people who you are…' }),
     h('label', { class: 'field' }, h('span', {}, 'Skills'), skills, h('small', {}, 'Comma separated, up to 12')),
-    h('div', { class: 'ed-h' }, 'Links'),
+    h('div', { class: 'ed-h' }, 'Links & Contact'),
     h('div', { class: 'form2' },
       inp('GitHub', () => st.links.github, (v) => (st.links.github = v), { max: 300, ph: 'github.com/you' }),
       inp('LinkedIn', () => st.links.linkedin, (v) => (st.links.linkedin = v), { max: 300 }),
       inp('Instagram', () => st.links.instagram, (v) => (st.links.instagram = v), { max: 300 }),
       inp('Website', () => st.links.website, (v) => (st.links.website = v), { max: 300 }),
-      inp('Email', () => st.links.email, (v) => (st.links.email = v), { max: 120, ph: 'you@mail.com' })),
+      inp('Public Email', () => st.links.email, (v) => (st.links.email = v), { max: 120, ph: 'you@mail.com' })),
     h('div', { class: 'ed-h' }, 'Projects'), projBox,
+    h('div', { class: 'ed-h' }, 'Experience'), expBox,
+    h('div', { class: 'ed-h' }, 'Education'), eduBox,
+    h('div', { class: 'ed-h' }, 'Certifications'), certBox,
+    h('div', { class: 'ed-h' }, 'Achievements & Honors'), achBox,
     err,
     h('div', { class: 'savebar' }, saveBtn, h('a', { class: 'btn ghost', href: '#/u/' + me.username }, h('span', {}, 'View page'))));
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); err.textContent = ''; saveBtn.disabled = true;
-    const body = { name: st.name, tagline: st.tagline, role: st.role, bio: st.bio, links: st.links, projects: st.projects, theme: st.theme, skills: skills.value.split(',').map((x) => x.trim()).filter(Boolean) };
-    if (st.avatar !== undefined) body.avatar = st.avatar;
+    const body = {
+      name: st.name,
+      tagline: st.tagline,
+      role: st.role,
+      bio: st.bio,
+      phone: st.phone,
+      location: st.location,
+      links: st.links,
+      projects: st.projects,
+      experience: st.experience,
+      education: st.education,
+      certifications: st.certifications,
+      achievements: st.achievements.filter(Boolean),
+      theme: st.theme,
+      resume_public: Boolean(st.resume_public ?? p.resumePublic),
+      skills: skills.value.split(',').map((x) => x.trim()).filter(Boolean),
+    };
     try {
       const r = await api('/profile', { method: 'PUT', body });
       me = r.me; await loadBase(); updateNav(); toast('Saved ✓ — looking good');
-      st.avatar = undefined; Object.assign(p, r.profile);
+      Object.assign(p, r.profile);
+      updateCompleteness();
     } catch (ex) { err.textContent = ex.message; form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake'); }
     saveBtn.disabled = false;
   });
+
+  updateCompleteness();
 
   const del = h('div', { class: 'danger' }, 'Want out? ', h('button', { type: 'button', onclick: async () => {
     if (!confirm('Delete your page and account for good? This can’t be undone.')) return;
@@ -675,6 +1142,40 @@ function shrink(file, size) {
   });
 }
 
+function shrinkToBlob(file, size) {
+  return new Promise((ok, no) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = size;
+      const s = Math.min(img.width, img.height), g = c.getContext('2d');
+      g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => (b ? ok(b) : no(new Error('Canvas toBlob failed'))), 'image/jpeg', 0.82);
+    };
+    img.onerror = no; img.src = url;
+  });
+}
+
+function shrinkShotToBlob(file, maxW = 1200, maxH = 750) {
+  return new Promise((ok, no) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxW || h > maxH) {
+        const ratio = Math.min(maxW / w, maxH / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => (b ? ok(b) : no(new Error('Canvas toBlob failed'))), 'image/jpeg', 0.80);
+    };
+    img.onerror = no; img.src = url;
+  });
+}
+
 /* resize an uploaded project screenshot to max 580x360 while preserving aspect ratio */
 function shrinkShot(file, maxW = 580, maxH = 360) {
   return new Promise((ok, no) => {
@@ -692,6 +1193,40 @@ function shrinkShot(file, maxW = 580, maxH = 360) {
       g.drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
       ok(c.toDataURL('image/jpeg', .78));
+    };
+    img.onerror = no; img.src = url;
+  });
+}
+
+function shrinkToBlob(file, size) {
+  return new Promise((ok, no) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = size;
+      const s = Math.min(img.width, img.height), g = c.getContext('2d');
+      g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => (b ? ok(b) : no(new Error('Canvas toBlob failed'))), 'image/jpeg', 0.82);
+    };
+    img.onerror = no; img.src = url;
+  });
+}
+
+function shrinkShotToBlob(file, maxW = 1200, maxH = 750) {
+  return new Promise((ok, no) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxW || h > maxH) {
+        const ratio = Math.min(maxW / w, maxH / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => (b ? ok(b) : no(new Error('Canvas toBlob failed'))), 'image/jpeg', 0.80);
     };
     img.onerror = no; img.src = url;
   });
@@ -752,7 +1287,7 @@ async function route(first) {
   const view = $('#view');
   view.classList.remove('ready'); view.replaceChildren(out.el);
   setTheme(out.theme); markNav(hash);
-  document.title = (out.title ? out.title + ' — ' : '') + 'Class of ’26';
+  document.title = (out.title ? out.title + ' — ' : '') + CLASS_NAME;
   scrollTo({ top: 0, behavior: 'instant' }); lastY = 0; vy = 0;
   if (hash === '#/crew') requestAnimationFrame(() => scrollTo({ top: $('#crew').offsetTop - 70, behavior: 'instant' }));
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -765,6 +1300,8 @@ addEventListener('hashchange', () => route());
 /* ---------- boot ---------- */
 (async function boot() {
   buildPx();
+  const introP = $('#intro p');
+  if (introP) introP.textContent = CLASS_NAME;
   let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { sizeInk(); if (!busy) buildPx(); }, 150); });
   const numEl = $('#introNum'); const t0 = performance.now();
   const counter = () => { const p = Math.min(1, (performance.now() - t0) / 1100); numEl.textContent = Math.round(p * p * 100); if (p < 1) requestAnimationFrame(counter); };

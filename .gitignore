@@ -1,6 +1,12 @@
-# Ignore student data and temporary files
+# Ignore student data, dependencies, and environment files
+node_modules/
 data/
 *.tmp
 .env
+.env.local
+.env.*.local
 .DS_Store
 Thumbs.db
+.agents/
+.neon
+

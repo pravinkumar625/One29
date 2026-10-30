@@ -272,6 +272,31 @@ a.proj:hover .proj-img{transform:scale(1.06)}
   .proj-preview{max-width:100%}
   .proj-shot-thumb{width:100%;max-width:240px;height:auto;aspect-ratio:16/10}
 }
+.resume-ed-box{margin:12px 0 20px;padding:16px;border:1.5px dashed var(--fg);border-radius:12px}
+.grid-sentinel{grid-column:1 / -1;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;opacity:.6;padding:24px 0}
+
+/* Completeness bar */
+.completeness-card{border:1.8px solid var(--fg);border-radius:18px;padding:20px;margin-bottom:34px;background:rgba(0,0,0,0.03)}
+.completeness-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.completeness-title{font-family:var(--display);font-weight:900;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.completeness-val{font-family:var(--display);font-weight:900;font-size:14px}
+.completeness-track{width:100%;height:10px;border:1.8px solid var(--fg);border-radius:99px;overflow:hidden;background:transparent;padding:1px}
+.completeness-fill{height:100%;background:var(--fg);border-radius:99px;transition:width .4s var(--ease)}
+.completeness-missing{font-size:12px;margin-top:10px;opacity:.85;line-height:1.4}
+.completeness-missing b{text-transform:uppercase;font-size:10px;letter-spacing:.08em}
+
+/* Resume bar & templates */
+.resume-ctrl-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0}
+.tpl-select{border:1.8px solid var(--fg);background:transparent;color:inherit;font-family:var(--display);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:9px 14px;border-radius:99px;outline:0;cursor:pointer}
+.tpl-select:focus-visible{outline:2px solid var(--fg)}
+
+/* Profile details sections */
+.p-item{position:relative;display:grid;grid-template-columns:1fr auto;gap:12px;padding:20px 18px;border-top:1.8px solid var(--fg)}
+.p-item:last-child{border-bottom:1.8px solid var(--fg)}
+.p-item h3{font-family:var(--display);font-weight:900;font-size:clamp(1rem,2.2vw,1.6rem);text-transform:uppercase;letter-spacing:-.02em}
+.p-item-sub{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.8;margin-top:4px}
+.p-item-desc{margin-top:8px;font-size:14px;opacity:.8;max-width:65ch;line-height:1.45}
+.p-item-date{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.7;text-align:right;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
   #ink{display:none}
