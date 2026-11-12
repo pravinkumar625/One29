@@ -61,7 +61,7 @@ function usernameFromEmail(email) {
   return base;
 }
 
-async function allocateUsername(email) {
+async function allocateUsername(email, client = db) {
   const base = usernameFromEmail(email);
   let candidate = base;
   let counter = 2;
@@ -601,9 +601,9 @@ async function api(req, res, url) {
     if (uRes.rows.length === 0) throw fail(404, 'No such student');
     const targetUser = uRes.rows[0];
 
-    // Check permission: owner can always access; other students can only access if resume_public is true and logged in
+    // Check permission: owner can always access; public can access if resume_public is true
     const isOwner = me && me.username === targetUsername;
-    const isPublicAllowed = targetUser.resume_public && me !== null;
+    const isPublicAllowed = Boolean(targetUser.resume_public);
 
     if (!isOwner && !isPublicAllowed) {
       throw fail(403, 'This resume is private');
@@ -658,7 +658,7 @@ async function api(req, res, url) {
         }
 
         // Allocate username and create user
-        const username = await allocateUsername(gUser.email);
+        const username = await allocateUsername(gUser.email, client);
         const name = gUser.name || nameFromEmail(gUser.email);
         const now = Date.now();
 
@@ -981,7 +981,9 @@ const server = http.createServer(async (req, res) => {
     else if (req.method === 'GET' || req.method === 'HEAD') serveStatic(req, res, url);
     else { res.writeHead(405); res.end(); }
   } catch (e) {
-    if (!e.status) console.error(e);
+    if (!e.status) {
+      console.error('[error]', req.method, url.pathname, ':', e.stack || e.message || e);
+    }
     if (!res.headersSent) send(res, e.status || 500, { error: e.status ? e.message : 'Server error' });
   }
 });
