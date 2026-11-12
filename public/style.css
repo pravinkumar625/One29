@@ -22,11 +22,6 @@ main{position:relative;z-index:2;min-height:100vh}
 #nav{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;justify-content:space-between;padding:max(18px, env(safe-area-inset-top, 18px)) max(var(--gut), env(safe-area-inset-right, var(--gut))) 18px max(var(--gut), env(safe-area-inset-left, var(--gut)));pointer-events:none}
 #nav>*{pointer-events:auto}
 .mark{font-family:var(--display);font-weight:900;font-size:26px;line-height:1;display:inline-block}
-.oval{position:absolute;left:50%;top:18px;transform:translateX(-50%);width:58px;height:26px;border:2px solid var(--fg);border-radius:50%;display:grid;place-items:center;overflow:hidden}
-.oval i{position:absolute;inset:0;border-top:2px solid var(--fg);border-bottom:2px solid var(--fg);border-radius:50%}
-.oval i:nth-child(1){transform:scaleX(.7)}.oval i:nth-child(2){transform:scaleX(.4)}.oval i:nth-child(3){transform:scaleX(.12)}
-.oval:hover i:nth-child(1){animation:ovl .7s var(--ease)}.oval:hover i:nth-child(2){animation:ovl .7s .06s var(--ease)}.oval:hover i:nth-child(3){animation:ovl .7s .12s var(--ease)}
-@keyframes ovl{50%{transform:scaleX(1)}}
 .pills{display:flex;gap:8px}
 .pill{position:relative;display:inline-flex;align-items:center;border:1.6px solid var(--fg);border-radius:99px;padding:9px 16px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;overflow:hidden;white-space:nowrap;transition:color .35s,transform .25s var(--ease)}
 .pill::before{content:"";position:absolute;inset:0;background:var(--fg);transform:translateY(102%);border-radius:50% 50% 0 0/ 80% 80% 0 0;transition:transform .45s var(--ease),border-radius .45s var(--ease)}
@@ -238,7 +233,6 @@ a.proj:hover .proj-img{transform:scale(1.06)}
 
 /* mobile */
 @media (max-width:760px){
-  .oval{display:none}
   .pill{padding:8px 12px;font-size:10px}
   .pills{gap:6px}
   .card-wrap{width:clamp(180px,46vw,240px);top:28%;left:50%}

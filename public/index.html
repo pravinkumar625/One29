@@ -16,7 +16,7 @@
 <!-- gooey filter for the ink blob -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <filter id="goo" x="-10%" y="-10%" width="120%" height="120%">
-    <feGaussianBlur in="SourceGraphic" stdDeviation="7"/>
+    <feGaussianBlur in="SourceGraphic" stdDeviation="5"/>
     <feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -10"/>
   </filter>
 </svg>
@@ -24,7 +24,6 @@
 
 <nav id="nav">
   <a class="mark mag" href="#/" aria-label="Home">✕</a>
-  <a class="oval" href="#/" aria-hidden="true" tabindex="-1"><i></i><i></i><i></i></a>
   <div class="pills">
     <a class="pill mag" href="#/crew" data-nav="crew"><span>Crew</span></a>
     <a class="pill mag" href="#/me" id="navMe" data-nav="me"><span>Profile</span></a>

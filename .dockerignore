@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+.DS_Store
+Thumbs.db
+data/
+*.tmp
+.agents/
+.neon
+test/
+verify-neon.js
+*.pdf

@@ -151,7 +151,48 @@ npm test
 
 ---
 
-## Deployment (Render / Railway / Fly.io)
+## Access & Authentication Rules
+
+- **Student Sign-up & Login**:
+  - Exclusively restricted to batch 129 students with an authorized email matching `^[a-zA-Z]+(?:\.[a-zA-Z]+)*\.s\.129@kalvium\.community$` via Google Sign-In.
+  - The cohort cap is strictly enforced at 30 students by default (configurable via `MAX_STUDENTS`).
+  - Pre-seeded student profiles are automatically linked to their respective Google accounts upon first sign-in.
+- **Public Visitors (Browsing & Resume Downloads)**:
+  - Any visitor on the internet can freely browse the class directory, view individual portfolio cards, projects, skills, education, experience, and certifications without needing to log in.
+  - Public visitors can preview and download a student's resume (both the PDFKit auto-generated PDF and uploaded PDF) directly from their profile page whenever the student has turned ON **"Show my resume publicly"** in their editor settings.
+  - Student privacy is strictly preserved: sensitive personal phone numbers and internal Google authentication emails are omitted from all public views and public downloads.
+
+---
+
+## Running with Docker
+
+The application is containerized using a lightweight Alpine-based Node.js runtime and is completely stateless.
+
+### Using Docker Compose (Recommended)
+1. Ensure your `.env` file is configured with your `DATABASE_URL` and S3 credentials.
+2. Build and start the container:
+   ```bash
+   docker compose up -d
+   ```
+3. Access the site at `http://localhost:3000`.
+4. To stop:
+   ```bash
+   docker compose down
+   ```
+
+### Using Docker CLI
+1. Build the Docker image:
+   ```bash
+   docker build -t class-portfolio .
+   ```
+2. Run the container:
+   ```bash
+   docker run -d -p 3000:3000 --env-file .env --name class-portfolio class-portfolio
+   ```
+
+---
+
+## Deployment (Render / Railway / Fly.io / Cloud)
 
 Because data is stored in Neon PostgreSQL and media is stored in Neon Object Storage, the application is **completely stateless**. You do **not** need a persistent disk mounted on your host.
 

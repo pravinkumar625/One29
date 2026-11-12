@@ -119,7 +119,7 @@ function drawInk(t) {
   pts[0].x += (tx - pts[0].x) * .16; pts[0].y += (ty - pts[0].y) * .16;
   for (let i = 1; i < N; i++) { pts[i].x += (pts[i - 1].x - pts[i].x) * .36; pts[i].y += (pts[i - 1].y - pts[i].y) * .36; }
   const speed = Math.hypot(tx - pts[0].x, ty - pts[0].y);
-  const head = (16 + Math.min(speed * .12, 7) + Math.sin(t / 240) * 1.5) * (hover ? 1.55 : 1);
+  const head = (8 + Math.min(speed * .06, 3) + Math.sin(t / 240) * 1) * (hover ? 1.4 : 1);
   cx.clearRect(0, 0, W, H); cx.fillStyle = inkColor; cx.beginPath();
   for (let i = 0; i < N; i++) {
     const r = Math.max(2.2, head * Math.pow(1 - i / N, 1.25));
@@ -393,13 +393,13 @@ async function profileView(username) {
   const L = s.links, linkDefs = [['GitHub', L.github], ['LinkedIn', L.linkedin], ['Instagram', L.instagram], ['Website', L.website]].filter((x) => x[1]);
   const links = linkDefs.map(([t, u]) => h('a', { class: 'btn ghost mag', href: safeUrl(u), target: '_blank', rel: 'noopener noreferrer' }, h('span', {}, t), h('span', {}, '↗')));
   if (L.email) links.push(h('a', { class: 'btn mag', href: 'mailto:' + L.email }, h('span', {}, 'Say hi'), h('span', {}, '✉')));
-  if (s.hasResume && (own || (s.resumePublic && me))) {
+  if (s.hasResume && (own || Boolean(s.resumePublic))) {
     links.push(h('a', { class: 'btn ghost mag', href: `/api/resume/${encodeURIComponent(s.username)}`, target: '_blank', rel: 'noopener noreferrer' }, h('span', {}, 'Uploaded PDF'), h('span', {}, '📄 ↗')));
   }
 
   // Auto-generated resume controls
   let autoResumeBox = null;
-  const canDownloadResume = own || (s.resumePublic && me);
+  const canDownloadResume = own || Boolean(s.resumePublic);
   if (canDownloadResume) {
     const tplSelect = h('select', { class: 'tpl-select', 'aria-label': 'Resume Template' },
       h('option', { value: 'classic' }, 'Classic'),

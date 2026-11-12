@@ -49,6 +49,26 @@ describe('Google Auth & Access Control - Integration Tests', () => {
   const GOOGLE_CLIENT_ID = 'test-google-client-id';
 
   const mockTokens = {
+    'token-thrishank-seeded': {
+      status: 200,
+      body: {
+        aud: GOOGLE_CLIENT_ID,
+        email: 'thrishank.kumar.s.129@kalvium.community',
+        email_verified: 'true',
+        sub: 'g-sub-thrishank-001',
+        name: 'Thrishank Kumar',
+      },
+    },
+    'token-lohith-seeded': {
+      status: 200,
+      body: {
+        aud: GOOGLE_CLIENT_ID,
+        email: 'lohith.m.s.129@kalvium.community',
+        email_verified: 'true',
+        sub: 'g-sub-lohith-001',
+        name: 'Lohith M',
+      },
+    },
     'token-pravin-seeded': {
       status: 200,
       body: {
@@ -172,26 +192,26 @@ describe('Google Auth & Access Control - Integration Tests', () => {
     assert.strictEqual(meRes.data.max, 30);
   });
 
-  it('links a seeded email to its pre-made page on first Google sign-in', async () => {
-    const res = await makeRequest(baseUrl, '/api/google', {
-      method: 'POST',
-      body: { credential: 'token-pravin-seeded' },
-    });
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.data.me.name, 'Pravin Kumar');
-    assert.strictEqual(res.data.me.username, 'pravin_kumar');
-
-    // Verify session cookie was set
-    const setCookie = res.headers['set-cookie'];
-    assert.ok(setCookie && setCookie.length > 0);
-    const cookie = setCookie[0].split(';')[0];
-
-    // Check /api/me with session
-    const meRes = await makeRequest(baseUrl, '/api/me', { cookie });
-    assert.strictEqual(meRes.status, 200);
-    assert.strictEqual(meRes.data.me.username, 'pravin_kumar');
-
-    // Total student count must remain 3 (linked existing, not duplicated)
+  it('links each of the 3 seeded emails to its pre-made page on first Google sign-in', async () => {
+    for (const [token, expectedUser, expectedName] of [
+      ['token-thrishank-seeded', 'thrishank_kumar', 'Thrishank Kumar'],
+      ['token-lohith-seeded', 'lohith_m', 'Lohith M'],
+      ['token-pravin-seeded', 'pravin_kumar', 'Pravin Kumar'],
+    ]) {
+      const res = await makeRequest(baseUrl, '/api/google', {
+        method: 'POST',
+        body: { credential: token },
+      });
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.data.me.name, expectedName);
+      assert.strictEqual(res.data.me.username, expectedUser);
+      const setCookie = res.headers['set-cookie'];
+      assert.ok(setCookie && setCookie.length > 0);
+      const cookie = setCookie[0].split(';')[0];
+      const meRes = await makeRequest(baseUrl, '/api/me', { cookie });
+      assert.strictEqual(meRes.status, 200);
+      assert.strictEqual(meRes.data.me.username, expectedUser);
+    }
     const listRes = await makeRequest(baseUrl, '/api/students');
     assert.strictEqual(listRes.data.students.length, 3);
   });
